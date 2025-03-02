@@ -4,8 +4,17 @@ A protoc wrapper that helps with dependency management when generating **Go**
 files (`.pb.go`s) from protobufs.
 
 Its job is to take a specification containing protos and the repos to find them
-in, and build `.pb.go`s for all of them, placing the results into a vendor
-directory.
+in, and build `.pb.go`s for all of them, replaces all their Go import statements
+with statements that work locally, relative to your `go.mod`, and places the
+results into a directory of your choosing (which should be inside your Go
+module).
+
+Its value is the ability to specify a dependency graph vertexes in a small file
+that can then be exploded into `.pb.go`s. Under the hood it takes care of
+finding protos in their repos, understanding the proto import paths to use,
+understanding how to convert those into Go paths, understanding how to make
+those Go paths work in your Go module, and passing the (often very extensive)
+flags necessary for that to `protoc`.
 
 ## Caveat emptor
 
@@ -22,7 +31,22 @@ a subset of the outputs.
 
 ## Usage
 
-### Simple example
+1. Install required tools `git`, `protoc`, `protoc-gen-go`, and optionally `protoc-gen-go-grpc`: https://grpc.io/docs/languages/go/quickstart/.
+2. Download the tool: `go get -tool github.com/jeanbza/protocw`
+3. Enumerate protos in your dependency graph, and the repos containing them, in in a yml file.
+4. Run the tool: `go tool github.com/jeanbza/protocw -c deps.yml`. Optionally provide `-grpc` for grpc generation, too.
+
+## Config
+
+Dependency graphs are encoded in a yml file as a
+`list[repo: string, protos: list[string]]`.
+
+- Each repo is the git clone URL.
+- Each proto is the _proto_ import path. For example, if proto `foo.proto` is
+  imported by `bar.proto` as `import "a/b/foo.proto"`, then it should be
+  referred to as `a/b/foo.proto` in the yml.
+
+### Simple
 
 Given this simple proto file,
 
@@ -42,13 +66,6 @@ Create the dependency file,
 - repo: github.com/my/repo
   protos:
     - people.proto
-```
-
-Run,
-
-```proto
-go get -tool github.com/jeanbza/protocw
-go tool github.com/jeanbza/protocw -c deps.yml
 ```
 
 ### More complex dependency
