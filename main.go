@@ -158,13 +158,26 @@ func (b *protocBuilder) addInclude(protoImportPath, includeDir, tmpRoot string) 
 	if relativeToOutDir == "" {
 		return fmt.Errorf("unable to determine a directory for generation of %s", protoImportPath)
 	}
-	newImportPath := filepath.Join(b.modRoot, b.outDir, relativeToOutDir)
+	newImportPath := filepath.Join(b.modRoot, b.outDir, stripInternal(relativeToOutDir))
 	b.includes = append(b.includes, &protocTriplet{
 		protoImportPath: protoImportPath,
 		includeDir:      includeDir,
 		newImportPath:   newImportPath,
 	})
 	return nil
+}
+
+// Anything after an internal/ directory can't be imported from outside the
+// internal/ directory. https://go.dev/doc/go1.4#internalpackages
+func stripInternal(path string) string {
+	parts := strings.Split(path, string(filepath.Separator))
+	var newParts []string
+	for _, part := range parts {
+		if part != "internal" {
+			newParts = append(newParts, part)
+		}
+	}
+	return strings.Join(newParts, string(filepath.Separator))
 }
 
 func (b *protocBuilder) build(ctx context.Context) exec.Cmd {
