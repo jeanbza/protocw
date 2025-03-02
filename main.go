@@ -18,7 +18,7 @@ import (
 )
 
 var configFilePath = flag.String("c", "", "config file path")
-var outDirPath = flag.String("o", "protogen", "out dir path")
+var outDirPath = flag.String("o", "internal/protogen", "out dir path")
 var verboseFlag = flag.Bool("v", false, "verbose output")
 
 func main() {
