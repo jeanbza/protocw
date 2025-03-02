@@ -4,7 +4,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
 )
 
 func cloneInto(ctx context.Context, dir, repo string) error {
@@ -16,5 +20,33 @@ func cloneInto(ctx context.Context, dir, repo string) error {
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("error running %s:\n%s%s: %v", cmd.Args, o.String(), e.String(), err)
 	}
-	return nil
+	return removeGoPackageOptions(dir)
+}
+
+var goPackageRe = regexp.MustCompile(`option go_package = ".*";\n`)
+
+// Removes any occurrences of "go_package [...]" in .proto files.
+func removeGoPackageOptions(dir string) error {
+	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() && strings.HasPrefix(filepath.Base(path), ".") {
+			// Ignore hidden dirs, like ".git".
+			return filepath.SkipDir
+		}
+		if !info.IsDir() && filepath.Ext(info.Name()) == ".proto" {
+			input, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+
+			output := goPackageRe.ReplaceAll(input, []byte(""))
+
+			if err := os.WriteFile(path, output, info.Mode().Perm()); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
