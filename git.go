@@ -12,7 +12,7 @@ import (
 )
 
 func cloneInto(ctx context.Context, dir, repo string) error {
-	cmd := exec.CommandContext(ctx, "git", "clone", repo)
+	cmd := exec.CommandContext(ctx, "git", "clone", repo, "--depth=1")
 	cmd.Dir = dir
 	var o, e bytes.Buffer
 	cmd.Stdout = &o
