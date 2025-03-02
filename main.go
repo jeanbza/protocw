@@ -42,6 +42,7 @@ func run(ctx context.Context, configFile, outDir string) error {
 	grp, grpCtx := errgroup.WithContext(ctx)
 	var b protocBuilder
 
+	outDirs := make(map[string]bool)
 	for _, d := range c.Includes {
 		grp.Go(func() error {
 			if err := cloneInto(grpCtx, tmpRoot, d.Repo); err != nil {
@@ -52,10 +53,12 @@ func run(ctx context.Context, configFile, outDir string) error {
 				if err != nil {
 					return fmt.Errorf("error searching for %s in %s: %v", proto, tmpRoot, err)
 				}
-				fmt.Printf("Found proto %s in %s at %s\n", proto, d.Repo, path)
-				if err := b.addInclude(proto, path, tmpRoot); err != nil {
+				fmt.Printf("Found %s in %s at %s\n", proto, d.Repo, path)
+				outDir, err := b.addInclude(proto, path, tmpRoot)
+				if err != nil {
 					return err
 				}
+				outDirs[outDir] = true
 			}
 			return nil
 		})
@@ -77,15 +80,16 @@ func run(ctx context.Context, configFile, outDir string) error {
 		return fmt.Errorf("error running %s:\n%s%s: %v", cmd.Args, o.String(), e.String(), err)
 	}
 
+	fmt.Println(cmd.Args)
+
 	mr, err := modRoot(ctx)
 	if err != nil {
 		return err
 	}
-	for _, i := range c.Includes {
-		oldImportRoot := i.Repo
-		newImportRoot := filepath.Join(mr, outDir)
-		fmt.Printf("replacing %s with %s in %s\n", oldImportRoot, newImportRoot, outDir)
-		if err := replaceImports(outDir, oldImportRoot, newImportRoot); err != nil {
+	for oldImportPath := range outDirs {
+		newImportRoot := filepath.Join(mr, outDir, oldImportPath)
+		fmt.Printf("replacing %s with %s in %s\n", oldImportPath, newImportRoot, outDir)
+		if err := replaceImports(outDir, oldImportPath, newImportRoot); err != nil {
 			return err
 		}
 	}
@@ -135,19 +139,19 @@ type protocBuilder struct {
 	includes []*protocTriplet
 }
 
-func (b *protocBuilder) addInclude(protoImportPath, includeDir, tmpRoot string) error {
+func (b *protocBuilder) addInclude(protoImportPath, includeDir, tmpRoot string) (outDir string, _ error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	outDir := strings.TrimPrefix(includeDir, tmpRoot)
+	outDir = strings.TrimPrefix(includeDir, tmpRoot)
 	if outDir == "" {
-		return fmt.Errorf("unable to determine a directory for generation of %s", protoImportPath)
+		return "", fmt.Errorf("unable to determine a directory for generation of %s", protoImportPath)
 	}
 	b.includes = append(b.includes, &protocTriplet{
 		protoImportPath: protoImportPath,
 		includeDir:      includeDir,
 		outDir:          outDir,
 	})
-	return nil
+	return outDir, nil
 }
 
 func (b *protocBuilder) build(ctx context.Context, outDir string) exec.Cmd {
