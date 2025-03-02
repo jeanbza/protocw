@@ -11,19 +11,15 @@ type Include struct {
 	Protos []string `yaml:"protos"`
 }
 
-type Config struct {
-	Includes []Include `yaml:"includes"`
-}
-
-func loadConfig(configFile string) (*Config, error) {
+func loadConfig(configFile string) ([]Include, error) {
 	b, err := os.ReadFile(configFile)
 	if err != nil {
 		return nil, err
 	}
-	var c Config
-	if err := yaml.Unmarshal(b, &c); err != nil {
+	var i []Include
+	if err := yaml.Unmarshal(b, &i); err != nil {
 		return nil, err
 	}
 
-	return &c, nil
+	return i, nil
 }

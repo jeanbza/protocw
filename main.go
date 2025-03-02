@@ -41,7 +41,7 @@ func main() {
 }
 
 func run(ctx context.Context, logger *log.Logger, configFile, outDir string) error {
-	c, err := loadConfig(configFile)
+	i, err := loadConfig(configFile)
 	if err != nil {
 		return fmt.Errorf("error loading config: %v", err)
 	}
@@ -59,7 +59,7 @@ func run(ctx context.Context, logger *log.Logger, configFile, outDir string) err
 	grp, grpCtx := errgroup.WithContext(ctx)
 	b := newProtocBuilder(mr, outDir)
 
-	for _, d := range c.Includes {
+	for _, d := range i {
 		grp.Go(func() error {
 			logger.Printf("Cloning %s into %s", d.Repo, tmpRoot)
 			if err := cloneInto(grpCtx, tmpRoot, d.Repo); err != nil {
