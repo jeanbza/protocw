@@ -6,20 +6,21 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type dep struct {
-	repo string
+type Include struct {
+	Repo   string   `yaml:"repo"`
+	Protos []string `yaml:"protos"`
 }
 
-type config struct {
-	deps []dep
+type Config struct {
+	Includes []Include `yaml:"includes"`
 }
 
-func loadConfig(configFile string) (*config, error) {
+func loadConfig(configFile string) (*Config, error) {
 	b, err := os.ReadFile(configFile)
 	if err != nil {
 		return nil, err
 	}
-	var c config
+	var c Config
 	if err := yaml.Unmarshal(b, &c); err != nil {
 		return nil, err
 	}
