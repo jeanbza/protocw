@@ -32,8 +32,8 @@ a subset of the outputs.
 ## Usage
 
 1. Install required tools `git`, `protoc`, `protoc-gen-go`, and optionally `protoc-gen-go-grpc`: https://grpc.io/docs/languages/go/quickstart/.
-2. Download the tool: `go get -tool github.com/jeanbza/protocw`
-3. Enumerate protos in your dependency graph, and the repos containing them, in in a yml file.
+2. Download the tool: `go get -tool github.com/jeanbza/protocw`.
+3. Enumerate protos in your dependency graph, and the repos containing them, in a yml file.
 4. Run the tool: `go tool github.com/jeanbza/protocw -c deps.yml`. Optionally provide `-grpc` for grpc generation, too.
 
 ## Config
@@ -61,7 +61,7 @@ message Person {
 
 Create the dependency file,
 
-```proto
+```yml
 # deps.yml
 - repo: github.com/my/repo
   protos:
@@ -73,7 +73,7 @@ Create the dependency file,
 If `people.proto` depends on `import "foo/bar/gaz.proto"`, you'll have to figure
 out which repo holds `foo/bar/gaz.proto` and include it in your config file:
 
-```proto
+```yml
 # deps.yml
 - repo: github.com/my/repo
   protos:
