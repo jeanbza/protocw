@@ -39,10 +39,14 @@ func run(ctx context.Context, configFile, outDir string) error {
 		return err
 	}
 
-	grp, grpCtx := errgroup.WithContext(ctx)
-	var b protocBuilder
+	mr, err := modRoot(ctx)
+	if err != nil {
+		return err
+	}
 
-	outDirs := make(map[string]bool)
+	grp, grpCtx := errgroup.WithContext(ctx)
+	b := newProtocBuilder(mr, outDir)
+
 	for _, d := range c.Includes {
 		grp.Go(func() error {
 			if err := cloneInto(grpCtx, tmpRoot, d.Repo); err != nil {
@@ -54,11 +58,9 @@ func run(ctx context.Context, configFile, outDir string) error {
 					return fmt.Errorf("error searching for %s in %s: %v", proto, tmpRoot, err)
 				}
 				fmt.Printf("Found %s in %s at %s\n", proto, d.Repo, path)
-				outDir, err := b.addInclude(proto, path, tmpRoot)
-				if err != nil {
+				if err := b.addInclude(proto, path, tmpRoot); err != nil {
 					return err
 				}
-				outDirs[outDir] = true
 			}
 			return nil
 		})
@@ -72,7 +74,7 @@ func run(ctx context.Context, configFile, outDir string) error {
 		return fmt.Errorf("error creating %s: %v", outDir, err)
 	}
 
-	cmd := b.build(ctx, outDir)
+	cmd := b.build(ctx)
 	var o, e bytes.Buffer
 	cmd.Stdout = &o
 	cmd.Stderr = &e
@@ -81,18 +83,6 @@ func run(ctx context.Context, configFile, outDir string) error {
 	}
 
 	fmt.Println(cmd.Args)
-
-	mr, err := modRoot(ctx)
-	if err != nil {
-		return err
-	}
-	for oldImportPath := range outDirs {
-		newImportRoot := filepath.Join(mr, outDir, oldImportPath)
-		fmt.Printf("replacing %s with %s in %s\n", oldImportPath, newImportRoot, outDir)
-		if err := replaceImports(outDir, oldImportPath, newImportRoot); err != nil {
-			return err
-		}
-	}
 
 	return nil
 }
@@ -121,40 +111,49 @@ func modRoot(ctx context.Context) (string, error) {
 }
 
 type protocTriplet struct {
+	// The import path in the .proto file.
+	//
 	// ex: buf/validate/validate.proto.
 	protoImportPath string
 	// The -I.
 	//
 	// ex: /path/to/protovalidate/proto/protovalidate.
 	includeDir string
-	// Where this gets placed in the protogen dir.
-	// Concretely: the path that goes after --go_opt=M<proto>=cosmoscommons/.
+	// Where to find this in the outDir.
+	// Concretely: the path that goes after --go_opt=M<protoImportPath>=<newImportPath>.
 	//
 	// ex: buf/validate (which translates to <out dir>/buf/validate).
-	outDir string
+	newImportPath string
 }
 
 type protocBuilder struct {
+	modRoot, outDir string
+
 	mu       sync.Mutex
 	includes []*protocTriplet
 }
 
-func (b *protocBuilder) addInclude(protoImportPath, includeDir, tmpRoot string) (outDir string, _ error) {
+func newProtocBuilder(modRoot, outDir string) *protocBuilder {
+	return &protocBuilder{modRoot: modRoot, outDir: outDir}
+}
+
+func (b *protocBuilder) addInclude(protoImportPath, includeDir, tmpRoot string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	outDir = strings.TrimPrefix(includeDir, tmpRoot)
-	if outDir == "" {
-		return "", fmt.Errorf("unable to determine a directory for generation of %s", protoImportPath)
+	relativeToOutDir := strings.TrimPrefix(includeDir, tmpRoot)
+	if relativeToOutDir == "" {
+		return fmt.Errorf("unable to determine a directory for generation of %s", protoImportPath)
 	}
+	newImportPath := filepath.Join(b.modRoot, b.outDir, relativeToOutDir)
 	b.includes = append(b.includes, &protocTriplet{
 		protoImportPath: protoImportPath,
 		includeDir:      includeDir,
-		outDir:          outDir,
+		newImportPath:   newImportPath,
 	})
-	return outDir, nil
+	return nil
 }
 
-func (b *protocBuilder) build(ctx context.Context, outDir string) exec.Cmd {
+func (b *protocBuilder) build(ctx context.Context) exec.Cmd {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	cmd := exec.CommandContext(ctx, "protoc")
@@ -165,8 +164,9 @@ func (b *protocBuilder) build(ctx context.Context, outDir string) exec.Cmd {
 		cmd.Args = append(cmd.Args, "-I", t.includeDir)
 	}
 	for _, t := range b.includes {
-		cmd.Args = append(cmd.Args, fmt.Sprintf("--go_opt=M%s=%s", t.protoImportPath, t.outDir))
+		cmd.Args = append(cmd.Args, fmt.Sprintf("--go_opt=M%s=%s", t.protoImportPath, t.newImportPath))
 	}
-	cmd.Args = append(cmd.Args, fmt.Sprintf("--go_out=:%s", outDir))
+	cmd.Args = append(cmd.Args, fmt.Sprintf("--go_opt=module=%s", b.modRoot))
+	cmd.Args = append(cmd.Args, "--go_out=.")
 	return *cmd
 }
