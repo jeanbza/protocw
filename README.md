@@ -26,7 +26,7 @@ a subset of the outputs.
 
 Given this simple proto file,
 
-```
+```proto
 # github.com/my/repo/people.proto
 message Person {
   string name = 1;
@@ -37,7 +37,7 @@ message Person {
 
 Create the dependency file,
 
-```
+```proto
 # deps.yml
 - repo: github.com/my/repo
   protos:
@@ -46,7 +46,7 @@ Create the dependency file,
 
 Run,
 
-```
+```proto
 go get -tool github.com/jeanbza/protocw
 go tool github.com/jeanbza/protocw -c deps.yml
 ```
@@ -56,7 +56,7 @@ go tool github.com/jeanbza/protocw -c deps.yml
 If `people.proto` depends on `import "foo/bar/gaz.proto"`, you'll have to figure
 out which repo holds `foo/bar/gaz.proto` and include it in your config file:
 
-```
+```proto
 # deps.yml
 - repo: github.com/my/repo
   protos:
