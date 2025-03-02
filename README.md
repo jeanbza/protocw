@@ -21,7 +21,8 @@ flags necessary for that to `protoc`.
 This tool is experimental. Please file issues for bugs or new use cases.
 
 This tool ignores all `option go_package` declarations. It always rewrites
-imports to something that works locally.
+imports to something that works locally. That does however mean you run the risk
+of double-registration panics at runtime: https://github.com/jeanbza/protocw/issues/1.
 
 This tool only works in the context of a Go module aware program, as a
 side-affect of the import rewriting.
