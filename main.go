@@ -19,7 +19,8 @@ import (
 
 var configFilePath = flag.String("c", "", "config file path")
 var outDirPath = flag.String("o", "internal/protogen", "out dir path")
-var verboseFlag = flag.Bool("v", false, "verbose output")
+var verbose = flag.Bool("v", false, "verbose output")
+var grpc = flag.Bool("grpc", false, "generate grpc outputs too")
 
 func main() {
 	flag.Parse()
@@ -30,17 +31,17 @@ func main() {
 	}
 
 	logger := log.New(io.Discard, "", log.LstdFlags)
-	if *verboseFlag {
+	if *verbose {
 		logger = log.Default()
 	}
 
-	if err := run(context.Background(), logger, *configFilePath, *outDirPath); err != nil {
+	if err := run(context.Background(), logger, *configFilePath, *outDirPath, *grpc); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, logger *log.Logger, configFile, outDir string) error {
+func run(ctx context.Context, logger *log.Logger, configFile, outDir string, grpc bool) error {
 	i, err := loadConfig(configFile)
 	if err != nil {
 		return fmt.Errorf("error loading config: %v", err)
@@ -57,7 +58,7 @@ func run(ctx context.Context, logger *log.Logger, configFile, outDir string) err
 	}
 
 	grp, grpCtx := errgroup.WithContext(ctx)
-	b := newProtocBuilder(mr, outDir)
+	b := newProtocBuilder(mr, outDir, grpc)
 
 	for _, d := range i {
 		grp.Go(func() error {
@@ -140,13 +141,14 @@ type protocTriplet struct {
 
 type protocBuilder struct {
 	modRoot, outDir string
+	grpc            bool
 
 	mu       sync.Mutex
 	includes []*protocTriplet
 }
 
-func newProtocBuilder(modRoot, outDir string) *protocBuilder {
-	return &protocBuilder{modRoot: modRoot, outDir: outDir}
+func newProtocBuilder(modRoot, outDir string, grpc bool) *protocBuilder {
+	return &protocBuilder{modRoot: modRoot, outDir: outDir, grpc: grpc}
 }
 
 func (b *protocBuilder) addInclude(protoImportPath, includeDir, tmpRoot string) error {
@@ -177,8 +179,18 @@ func (b *protocBuilder) build(ctx context.Context) exec.Cmd {
 	}
 	for _, t := range b.includes {
 		cmd.Args = append(cmd.Args, fmt.Sprintf("--go_opt=M%s=%s", t.protoImportPath, t.newImportPath))
+		if b.grpc {
+			cmd.Args = append(cmd.Args, fmt.Sprintf("--go-grpc_opt=M%s=%s", t.protoImportPath, t.newImportPath))
+		}
 	}
 	cmd.Args = append(cmd.Args, fmt.Sprintf("--go_opt=module=%s", b.modRoot))
+	if b.grpc {
+		cmd.Args = append(cmd.Args, fmt.Sprintf("--go-grpc_opt=module=%s", b.modRoot))
+	}
 	cmd.Args = append(cmd.Args, "--go_out=.")
+	if b.grpc {
+		// --go-grpc_out=. --go-grpc_opt=paths=source_relative
+		cmd.Args = append(cmd.Args, "--go-grpc_out=.")
+	}
 	return *cmd
 }
