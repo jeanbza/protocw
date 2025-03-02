@@ -9,6 +9,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+
+	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -36,21 +39,30 @@ func run(ctx context.Context, configFile, outDir string) error {
 		return err
 	}
 
+	grp, grpCtx := errgroup.WithContext(ctx)
 	var b protocBuilder
+
 	for _, d := range c.Includes {
-		if err := cloneInto(ctx, tmpRoot, d.Repo); err != nil {
-			return fmt.Errorf("error cloning %s into %s: %v", d.Repo, tmpRoot, err)
-		}
-		for _, proto := range d.Protos {
-			path, err := searchDirForProto(tmpRoot, proto)
-			if err != nil {
-				return fmt.Errorf("error searching for %s in %s: %v", proto, tmpRoot, err)
+		grp.Go(func() error {
+			if err := cloneInto(grpCtx, tmpRoot, d.Repo); err != nil {
+				return fmt.Errorf("error cloning %s into %s: %v", d.Repo, tmpRoot, err)
 			}
-			fmt.Printf("Found proto %s in %s at %s\n", proto, d.Repo, path)
-			if err := b.addInclude(proto, path, tmpRoot); err != nil {
-				return err
+			for _, proto := range d.Protos {
+				path, err := searchDirForProto(tmpRoot, proto)
+				if err != nil {
+					return fmt.Errorf("error searching for %s in %s: %v", proto, tmpRoot, err)
+				}
+				fmt.Printf("Found proto %s in %s at %s\n", proto, d.Repo, path)
+				if err := b.addInclude(proto, path, tmpRoot); err != nil {
+					return err
+				}
 			}
-		}
+			return nil
+		})
+	}
+
+	if err := grp.Wait(); err != nil {
+		return err
 	}
 
 	if err := os.MkdirAll(outDir, 0755); err != nil {
@@ -119,15 +131,18 @@ type protocTriplet struct {
 }
 
 type protocBuilder struct {
+	mu       sync.Mutex
 	includes []*protocTriplet
 }
 
-func (p *protocBuilder) addInclude(protoImportPath, includeDir, tmpRoot string) error {
+func (b *protocBuilder) addInclude(protoImportPath, includeDir, tmpRoot string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	outDir := strings.TrimPrefix(includeDir, tmpRoot)
 	if outDir == "" {
 		return fmt.Errorf("unable to determine a directory for generation of %s", protoImportPath)
 	}
-	p.includes = append(p.includes, &protocTriplet{
+	b.includes = append(b.includes, &protocTriplet{
 		protoImportPath: protoImportPath,
 		includeDir:      includeDir,
 		outDir:          outDir,
@@ -135,15 +150,17 @@ func (p *protocBuilder) addInclude(protoImportPath, includeDir, tmpRoot string) 
 	return nil
 }
 
-func (p *protocBuilder) build(ctx context.Context, outDir string) exec.Cmd {
+func (b *protocBuilder) build(ctx context.Context, outDir string) exec.Cmd {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	cmd := exec.CommandContext(ctx, "protoc")
-	for _, t := range p.includes {
+	for _, t := range b.includes {
 		cmd.Args = append(cmd.Args, t.protoImportPath)
 	}
-	for _, t := range p.includes {
+	for _, t := range b.includes {
 		cmd.Args = append(cmd.Args, "-I", t.includeDir)
 	}
-	for _, t := range p.includes {
+	for _, t := range b.includes {
 		cmd.Args = append(cmd.Args, fmt.Sprintf("--go_opt=M%s=%s", t.protoImportPath, t.outDir))
 	}
 	cmd.Args = append(cmd.Args, fmt.Sprintf("--go_out=:%s", outDir))
