@@ -4,7 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"flag"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,21 +17,30 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+var configFilePath = flag.String("c", "", "config file path")
+var outDirPath = flag.String("o", "protogen", "out dir path")
+var verboseFlag = flag.Bool("v", false, "verbose output")
+
 func main() {
-	if len(os.Args) != 3 {
-		fmt.Println("protocw <config file> <out dir>")
+	flag.Parse()
+
+	if *configFilePath == "" || *outDirPath == "" {
+		fmt.Println("protocw -c=<config file> [-o=<out dir>] [-v]")
 		os.Exit(1)
 	}
-	ctx := context.Background()
-	configFile := os.Args[1]
-	outDir := os.Args[2]
-	if err := run(ctx, configFile, outDir); err != nil {
+
+	logger := log.New(io.Discard, "", log.LstdFlags)
+	if *verboseFlag {
+		logger = log.Default()
+	}
+
+	if err := run(context.Background(), logger, *configFilePath, *outDirPath); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, configFile, outDir string) error {
+func run(ctx context.Context, logger *log.Logger, configFile, outDir string) error {
 	c, err := loadConfig(configFile)
 	if err != nil {
 		return fmt.Errorf("error loading config: %v", err)
@@ -49,6 +61,7 @@ func run(ctx context.Context, configFile, outDir string) error {
 
 	for _, d := range c.Includes {
 		grp.Go(func() error {
+			logger.Printf("Cloning %s into %s", d.Repo, tmpRoot)
 			if err := cloneInto(grpCtx, tmpRoot, d.Repo); err != nil {
 				return fmt.Errorf("error cloning %s into %s: %v", d.Repo, tmpRoot, err)
 			}
@@ -57,7 +70,7 @@ func run(ctx context.Context, configFile, outDir string) error {
 				if err != nil {
 					return fmt.Errorf("error searching for %s in %s: %v", proto, tmpRoot, err)
 				}
-				fmt.Printf("Found %s in %s at %s\n", proto, d.Repo, path)
+				logger.Printf("Found %s in %s at %s\n", proto, d.Repo, path)
 				if err := b.addInclude(proto, path, tmpRoot); err != nil {
 					return err
 				}
@@ -78,11 +91,10 @@ func run(ctx context.Context, configFile, outDir string) error {
 	var o, e bytes.Buffer
 	cmd.Stdout = &o
 	cmd.Stderr = &e
+	logger.Printf("Running %v\n", cmd.Args)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("error running %s:\n%s%s: %v", cmd.Args, o.String(), e.String(), err)
 	}
-
-	fmt.Println(cmd.Args)
 
 	return nil
 }
