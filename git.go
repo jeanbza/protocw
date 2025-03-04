@@ -57,6 +57,9 @@ func searchDirForProto(dir, proto string) (string, error) {
 		if err != nil {
 			return err
 		}
+		if info.IsDir() && strings.HasPrefix(info.Name(), ".") {
+			return filepath.SkipDir
+		}
 		if _, err := os.Lstat(filepath.Join(path, proto)); err == nil {
 			results = append(results, path)
 		}
