@@ -22,7 +22,7 @@ This tool is experimental. Please file issues for bugs or new use cases.
 
 This tool ignores all `option go_package` declarations. It always rewrites
 imports to something that works locally. That does however mean you run the risk
-of double-registration panics at runtime: https://github.com/jeanbza/protocw/issues/1.
+of double-registration panics at runtime: <https://github.com/jeanbza/protocw/issues/1>.
 
 This tool only works in the context of a Go module aware program, as a
 side-affect of the import rewriting.
@@ -32,7 +32,7 @@ a subset of the outputs.
 
 ## Usage
 
-1. Install required tools `git`, `protoc`, `protoc-gen-go`, and optionally `protoc-gen-go-grpc`: https://grpc.io/docs/languages/go/quickstart/.
+1. Install required tools `git`, `protoc`, `protoc-gen-go`, and optionally `protoc-gen-go-grpc`: <https://grpc.io/docs/languages/go/quickstart/>.
 2. Download the tool: `go get -tool github.com/jeanbza/protocw`.
 3. Enumerate protos in your dependency graph, and the repos containing them, in a yml file.
 4. Run the tool: `go tool github.com/jeanbza/protocw -c deps.yml`. Optionally provide `-grpc` for grpc generation, too.
@@ -64,10 +64,14 @@ Create the dependency file,
 
 ```yml
 # deps.yml
+- localpath: path/to/local.proto
 - repo: github.com/my/repo
   protos:
     - people.proto
 ```
+
+You can specify either local protos with `localpath`, or remote protos with
+`repo` & `protos`.
 
 ### More complex dependency
 
