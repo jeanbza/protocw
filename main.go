@@ -36,12 +36,13 @@ func main() {
 	}
 
 	if err := run(context.Background(), logger, *configFilePath, *outDirPath, *grpc); err != nil {
-		fmt.Println(err)
+		fmt.Println("error during run:", err)
 		os.Exit(1)
 	}
 }
 
 func run(ctx context.Context, logger *log.Logger, configFile, outDir string, grpc bool) error {
+	logger.Println("Starting")
 	i, err := loadConfig(configFile)
 	if err != nil {
 		return fmt.Errorf("error loading config: %v", err)
@@ -61,6 +62,12 @@ func run(ctx context.Context, logger *log.Logger, configFile, outDir string, grp
 	b := newProtocBuilder(mr, outDir, grpc)
 
 	for _, d := range i {
+		if d.LocalPath != "" {
+			// We don't need to clone, files are local.
+			logger.Printf("Local proto %s included\n", d.LocalPath)
+			b.addLocalInclude(d.LocalPath)
+			continue
+		}
 		grp.Go(func() error {
 			logger.Printf("Cloning %s into %s", d.Repo, tmpRoot)
 			if err := cloneInto(grpCtx, tmpRoot, d.Repo); err != nil {
@@ -96,7 +103,7 @@ func run(ctx context.Context, logger *log.Logger, configFile, outDir string, grp
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("error running %s:\n%s%s: %v", cmd.Args, o.String(), e.String(), err)
 	}
-
+	logger.Println("Done")
 	return nil
 }
 
@@ -124,11 +131,11 @@ func modRoot(ctx context.Context) (string, error) {
 }
 
 type protocTriplet struct {
-	// The import path in the .proto file.
+	// The import path that other protos use to import this.
 	//
 	// ex: buf/validate/validate.proto.
 	protoImportPath string
-	// The -I.
+	// The -I: where to find it on local disk.
 	//
 	// ex: /path/to/protovalidate/proto/protovalidate.
 	includeDir string
@@ -149,6 +156,21 @@ type protocBuilder struct {
 
 func newProtocBuilder(modRoot, outDir string, grpc bool) *protocBuilder {
 	return &protocBuilder{modRoot: modRoot, outDir: outDir, grpc: grpc}
+}
+
+func (b *protocBuilder) addLocalInclude(pathToProto string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	dir := filepath.Dir(pathToProto)
+	if dir == "" {
+		// It's a file without a leading dir.
+		dir = strings.TrimSuffix(pathToProto, filepath.Ext(pathToProto))
+	}
+	b.includes = append(b.includes, &protocTriplet{
+		protoImportPath: pathToProto,
+		includeDir:      "",
+		newImportPath:   filepath.Join(b.modRoot, b.outDir, dir),
+	})
 }
 
 func (b *protocBuilder) addInclude(protoImportPath, includeDir, tmpRoot string) error {
@@ -188,9 +210,15 @@ func (b *protocBuilder) build(ctx context.Context) exec.Cmd {
 		cmd.Args = append(cmd.Args, t.protoImportPath)
 	}
 	for _, t := range b.includes {
+		if t.includeDir == "" {
+			continue
+		}
 		cmd.Args = append(cmd.Args, "-I", t.includeDir)
 	}
 	for _, t := range b.includes {
+		if t.newImportPath == "" {
+			continue
+		}
 		cmd.Args = append(cmd.Args, fmt.Sprintf("--go_opt=M%s=%s", t.protoImportPath, t.newImportPath))
 		if b.grpc {
 			cmd.Args = append(cmd.Args, fmt.Sprintf("--go-grpc_opt=M%s=%s", t.protoImportPath, t.newImportPath))

@@ -7,8 +7,9 @@ import (
 )
 
 type Include struct {
-	Repo   string   `yaml:"repo"`
-	Protos []string `yaml:"protos"`
+	LocalPath string   `yaml:"localpath"`
+	Repo      string   `yaml:"repo"`
+	Protos    []string `yaml:"protos"`
 }
 
 func loadConfig(configFile string) ([]Include, error) {
